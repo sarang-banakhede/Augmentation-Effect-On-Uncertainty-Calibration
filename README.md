@@ -1,67 +1,42 @@
 # Augmentation, Uncertainty and Boundary Calibration in Dermoscopic Lesion Segmentation
 
-Official code for the manuscript **"Beyond Dice: How Training-Time Augmentation Reshapes Uncertainty and Boundary Calibration of a U-Net for Dermoscopic Lesion Segmentation"**.
+Code for the manuscript **"Beyond Dice: How Training-Time Augmentation Reshapes Uncertainty and Boundary Calibration of a U-Net for Dermoscopic Lesion Segmentation"** (under review).
 
-**Authors:** Sarang Banakhede, Akshra Tiwari, Vibha Tiwari, Hemant Ghayvat
+Sarang Banakhede, Akshra Tiwari, Vibha Tiwari, Hemant Ghayvat
 
-> **Status:** the manuscript is currently under review. This repository documents the experimental pipeline. Results, figures and discussion are in the manuscript and will be linked here after publication.
+## What it does
 
-## Overview
+The same U-Net is trained on ISIC-2016 with five augmentation pipelines and three seeds each (15 models). Uncertainty is estimated with MC Dropout. Every model is tested on the ISIC-2016 test set and on PH2 (external). The code measures:
 
-Data augmentation is standard practice in medical image segmentation, but its effect on the reliability of a model's confidence is rarely examined. This study holds the architecture, optimizer and inference protocol fixed and varies only the training-time augmentation pipeline. It measures how each pipeline changes uncertainty and calibration, both over all pixels and in a band around the lesion contour, on the in-distribution ISIC-2016 test set and on the external PH2 dataset.
+- segmentation: Dice, IoU, HD95
+- calibration: ECE and Brier score over all pixels and within a 5 px band around the lesion contour
+- usefulness of uncertainty: risk-coverage, error detection, correlation with error
+- statistics: hierarchical bootstrap over seeds and images, paired differences with Holm correction
 
 | Pipeline | Transforms |
 | --- | --- |
-| `baseline` | none (resize and scaling only) |
-| `geometric` | horizontal and vertical flip, rotation up to 30 degrees, elastic deformation |
-| `intensity` | brightness and contrast, Gaussian noise, gamma |
-| `mixing` | horizontal flip, then MixUp or CutMix on each batch |
+| `baseline` | none |
+| `geometric` | flips, rotation, elastic deformation |
+| `intensity` | brightness/contrast, Gaussian noise, gamma |
+| `mixing` | horizontal flip, MixUp or CutMix per batch |
 | `occlusion` | horizontal flip, GridDropout, CoarseDropout |
 
-## Protocol
+Training setup: Adam (lr 1e-4), batch size 16, 50 epochs, BCE + soft Dice, 256 x 256 input, spatial dropout p = 0.3. The checkpoint with the best Dice on a fixed 90-image validation split is kept. MC Dropout uses T = 20 passes.
 
-| Component | Setting |
-| --- | --- |
-| Model | U-Net, encoder widths 64 to 512, 1024-channel bottleneck, spatial dropout (p = 0.3) in every block |
-| Data | ISIC-2016 (900 train, 379 test), PH2 (200, external), images resized to 256 x 256 |
-| Validation | fixed 10% hold-out of the training set (90 images, split seed 42), identical for every run |
-| Training | Adam, learning rate 1e-4, batch size 16, 50 epochs, BCE + soft Dice, no scheduler, no early stopping |
-| Checkpoint | highest validation Dice, the test sets are never used for selection |
-| Seeds | 0, 1, 2 for each pipeline (15 models) |
-| Uncertainty | MC Dropout, T = 20 passes, BatchNorm in eval mode, predictive mean, variance and entropy |
-| Calibration | pixel-level ECE (10 bins) and Brier score over all, foreground, background and boundary pixels |
-| Boundary band | pixels within 5 px of the reference contour on either side |
-| Usefulness of uncertainty | risk-coverage (AURC), pixel and image-level error detection (AUROC, AUPRC) |
-| Statistics | hierarchical bootstrap over seeds and images (B = 2000), paired differences, Holm correction, Friedman and Wilcoxon on per-image scores |
-
-## Repository structure
+## Structure
 
 ```
-.
-├── configs/
-│   └── default.yaml          all paths and hyperparameters
-├── scripts/
-│   ├── train.py              train every pipeline and seed
-│   ├── infer.py              MC Dropout inference on ISIC-2016 test and PH2
-│   └── summarize.py          tables, confidence intervals and statistical tests
-├── src/
-│   ├── augmentations.py      pipelines, MixUp and CutMix
-│   ├── analysis.py           bootstrap, paired tests, paper tables
-│   ├── config.py             YAML loading and overrides
-│   ├── data.py               pairing, caching, split, dataset
-│   ├── inference.py          MC Dropout inference and per-image metrics
-│   ├── losses.py             BCE + soft Dice
-│   ├── metrics.py            Dice, IoU, HD95, ECE, Brier, entropy, error histograms
-│   ├── model.py              U-Net with spatial dropout
-│   ├── stat_tools.py         AUROC, AURC, Holm
-│   ├── training.py           resumable training loop
-│   └── utils.py              seeding, job claiming, multi-GPU launcher
-├── tests/
-├── requirements.txt
-└── README.md
+configs/default.yaml     paths and hyperparameters
+scripts/
+  train.py               train all pipelines and seeds
+  infer.py               MC Dropout inference on ISIC-2016 test and PH2
+  summarize.py           tables, confidence intervals, statistical tests
+src/                     model, augmentations, metrics, training, inference, analysis
+tests/
+requirements.txt
 ```
 
-## Installation
+## Setup
 
 ```bash
 git clone https://github.com/sarang-banakhede/Augmentation-Uncertainty-Calibration-Study.git
@@ -69,30 +44,24 @@ cd Augmentation-Uncertainty-Calibration-Study
 pip install -r requirements.txt
 ```
 
-Python 3.10 or newer is required. The reported runs used Python 3.12, PyTorch 2.10 (CUDA 12.8), Albumentations 2.0.8 and NumPy 2.0.2.
+Tested with Python 3.12, PyTorch 2.10, Albumentations 2.0.8.
 
-## Data
-
-Download the datasets from their providers and arrange them as follows.
+Download the datasets and arrange them like this (or change the paths in `configs/default.yaml`):
 
 ```
 data/
 ├── ISIC2016/
-│   ├── train/{images,masks}/     PNG, mask has the same file name as the image
+│   ├── train/{images,masks}/
 │   └── test/{images,masks}/
 └── PH2Dataset/
-    ├── image/                    BMP
-    └── label/                    BMP, {id}_lesion.bmp
+    ├── image/                 .bmp
+    └── label/                 .bmp, named {id}_lesion.bmp
 ```
 
-- ISIC-2016 Skin Lesion Analysis Toward Melanoma Detection: https://challenge.isic-archive.com/data/
+- ISIC-2016: https://challenge.isic-archive.com/data/
 - PH2: https://www.fc.up.pt/addi/ph2%20database.html
 
-Masks are binarized at 127. Paths can be changed in `configs/default.yaml`. The scripts check the image counts (900, 379, 200) and stop on a mismatch. Set a count to `null` in the config to skip the check.
-
-## Usage
-
-Run the three stages in order. Each stage is resumable and skips finished runs.
+## Run
 
 ```bash
 python scripts/train.py
@@ -100,12 +69,9 @@ python scripts/infer.py
 python scripts/summarize.py
 ```
 
-One worker process is started per visible GPU, and each run stays on a single GPU, so results do not depend on the number of GPUs. Without a GPU the scripts run on the CPU, which is only practical for small tests.
-
-Useful options (available on all three scripts):
+Each step skips finished runs, so an interrupted run can be restarted. One process is started per GPU. Options:
 
 ```bash
-python scripts/train.py --config configs/default.yaml
 python scripts/train.py --strategies baseline mixing --seeds 0 1
 python scripts/train.py --output-root /path/to/outputs
 python scripts/train.py --resume-from /path/to/previous/outputs
@@ -115,46 +81,8 @@ python scripts/train.py --resume-from /path/to/previous/outputs
 
 ```
 outputs/
-├── split.json, val_split.csv
-├── train/<strategy>/seed_<s>/
-│   ├── best_weights.pth, last_weights.pth
-│   ├── training_log.csv, run_config.json
-├── infer/<strategy>/seed_<s>/
-│   ├── {isic,ph2}_per_image.csv     Dice, IoU, HD95, variance, entropy, ECE and Brier by region
-│   ├── {isic,ph2}_bins.npz          per-image calibration bins and error-detection histograms
-│   ├── {isic,ph2}_summary.csv       dataset-level numbers for the run
-│   └── {isic,ph2}_T_sweep.npz       results for T = 10, 20, 50, 100 from the same passes
-└── summary/
-    ├── table_II_segmentation.csv
-    ├── table_III_calibration.csv
-    ├── table_IV_usefulness.csv
-    ├── per_run.csv, bootstrap_ci.csv, paired_diffs.csv
-    ├── friedman_wilcoxon.csv, T_sensitivity.csv, training_summary.csv
+├── train/<strategy>/seed_<s>/    weights, training_log.csv
+├── infer/<strategy>/seed_<s>/    per-image metrics, calibration bins, T sweep
+└── summary/                      table_II_segmentation.csv, table_III_calibration.csv,
+                                  table_IV_usefulness.csv, paired_diffs.csv, ...
 ```
-
-In the paper tables, a dagger marks a difference from the baseline with Holm-adjusted p < 0.05.
-
-## Reproducibility
-
-- All randomness is seeded: weight initialization, batch order, augmentation, MixUp and CutMix draws and dropout masks.
-- cuDNN runs in deterministic mode, and `data.num_workers` must be at least 1 so that augmentation seeding is deterministic.
-- MC Dropout masks are seeded per batch from `inference.mc_seed` plus the batch index, so the first 20 of 100 passes are identical to the T = 20 run.
-- Each run writes `run_config.json` with the settings and library versions.
-- Training one model takes about 38 minutes on an NVIDIA Tesla T4.
-
-## Tests
-
-```bash
-pip install -r requirements-dev.txt
-pytest -q
-```
-
-The tests cover the metric and statistics helpers and run the full train, infer and summarize pipeline on a small synthetic dataset.
-
-## Citation
-
-A citation entry will be added when the manuscript is published.
-
-## License
-
-Released under the MIT License. See `LICENSE`.
