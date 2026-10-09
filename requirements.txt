@@ -1,0 +1,7 @@
+torch>=2.1
+numpy>=1.26
+scipy>=1.11
+pandas>=2.0
+albumentations==2.0.8
+pillow>=10.0
+pyyaml>=6.0

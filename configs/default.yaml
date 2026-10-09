@@ -1,0 +1,49 @@
+paths:
+  isic_train_images: data/ISIC2016/train/images
+  isic_train_masks: data/ISIC2016/train/masks
+  isic_test_images: data/ISIC2016/test/images
+  isic_test_masks: data/ISIC2016/test/masks
+  ph2_images: data/PH2Dataset/image
+  ph2_masks: data/PH2Dataset/label
+  output_root: outputs
+  cache_dir: .cache
+
+experiment:
+  strategies: [baseline, geometric, intensity, mixing, occlusion]
+  seeds: [0, 1, 2]
+  datasets: [isic, ph2]
+  expected_n:
+    isic_train: 900
+    isic: 379
+    ph2: 200
+
+data:
+  image_size: 256
+  val_fraction: 0.10
+  split_seed: 42
+  num_workers: 2
+
+model:
+  dropout: 0.3
+
+train:
+  epochs: 50
+  batch_size: 16
+  lr: 0.0001
+
+inference:
+  mc_passes: 20
+  t_sweep: [10, 20, 50, 100]
+  t_sweep_seeds: [0, 1, 2]
+  mc_seed: 1234
+  batch_size: 8
+  ece_bins: 10
+  boundary_px: 5
+  err_hist_bins: 1024
+
+statistics:
+  n_boot: 2000
+  boot_seed: 0
+  reference: baseline
+  fail_dice: 0.80
+  alpha: 0.05
